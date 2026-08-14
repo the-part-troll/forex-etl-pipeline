@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # 1. MySQL 数据库服务（基本沿用你之前的配置）
+  mysql:
+    image: mysql:8.0
+    container_name: etl-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: etl_pass
+      MYSQL_DATABASE: forex_db
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-petl_pass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. Python 调度器应用服务（新加入的）
+  app:
+    build: .
+    container_name: forex-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy  # 等 MySQL 完全启动后再启动爬虫
+    environment:
+      # 把 .env 里的变量传给容器（注意 HOST 要改成 "mysql"）
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: forex_user
+      MYSQL_PASSWORD: forex_pass
+      MYSQL_DATABASE: forex_db
+      LOG_DIR: /app/logs
+    volumes:
+      - ./logs:/app/logs       # 挂载日志目录，方便宿主机查看日志
+      - ./chroma_data:/app/chroma_data
+    ports:
+      - "8000:8000"            # 如果将来有 Web 服务，可以预留
+
+volumes:
+  mysql-data:
